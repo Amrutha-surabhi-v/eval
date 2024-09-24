@@ -1,0 +1,139 @@
+import pyaudio
+import wave
+import numpy as np
+import keyboard
+from scipy.signal import butter, lfilter
+
+#Parameters
+FORMAT = pyaudio.paInt16  # Audio format
+CHANNELS = 1  # Number of audio channels (1 for mono, 2 for stereo)
+RATE = 44100  # Sampling rate (in Hz)
+CHUNK = 1024  # Number of frames per buffer
+RECORDING_FILENAME = "audio_rec.wav"
+
+# Bandpass filter parameters
+LOWCUT = 300.0  # Lower bound of the frequency range (300 Hz)
+HIGHCUT = 3400.0  # Upper bound of the frequency range (3400 Hz)
+
+# Initialize PyAudio
+audio = pyaudio.PyAudio()
+
+# Create a stream
+stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+
+print("Recording... Press 's' to stop recording.")
+
+frames = []
+
+def butter_bandpass(lowcut, highcut, fs, order=5):
+    nyquist = 0.5 * fs
+    low = lowcut / nyquist
+    high = highcut / nyquist
+    b, a = butter(order, [low, high], btype='band')
+    return b, a
+
+def apply_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+def smooth(data, window_size=10):
+    return np.convolve(data, np.ones(window_size)/window_size, mode='same')
+
+def noise_gate(data, threshold=500):
+    return np.where(np.abs(data) < threshold, 0, data)
+
+try:
+    while True:
+        # Read audio data from the stream
+        data = stream.read(CHUNK)
+        
+        # Convert data to numpy array for processing
+        numpy_data = np.frombuffer(data, dtype=np.int16)
+        
+        # Apply a bandpass filter
+        filtered_data = apply_bandpass_filter(numpy_data, LOWCUT, HIGHCUT, RATE)
+        
+        # Apply a smoothing filter
+        smoothed_data = smooth(filtered_data, window_size=10)
+        
+        # Apply a noise gate
+        gated_data = noise_gate(smoothed_data, threshold=500)
+        
+        # Convert numpy array back to bytes and store it
+        frames.append(gated_data.astype(np.int16).tobytes())
+        
+        # Check if 's' is pressed to stop recording
+        if keyboard.is_pressed('s'):
+            print("Stopping...")
+            break
+finally:
+    # Stop and close the stream
+    stream.stop_stream()
+    stream.close()
+    
+    # Terminate PyAudio
+    audio.terminate()
+
+    # Save the recorded audio to a file (WAV format)
+    with wave.open(RECORDING_FILENAME, 'wb') as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(audio.get_sample_size(FORMAT))
+        wf.setframerate(RATE)
+        wf.writeframes(b''.join(frames))
+
+print(f"Recording saved to {RECORDING_FILENAME}")
+
+def save_to_wav(filename):
+    try:
+        with wave.open(filename, 'wb') as wf:
+            if CHANNELS not in [1, 2]:
+                raise ValueError(f"Invalid number of channels: {CHANNELS}. Should be 1 (mono) or 2 (stereo).")
+            wf.setnchannels(CHANNELS)
+            
+            audio = pyaudio.PyAudio()
+            sample_width = audio.get_sample_size(FORMAT)
+            
+            if sample_width <= 0:
+                raise ValueError(f"Invalid format for sample width: {FORMAT}")
+            wf.setsampwidth(sample_width)
+            
+            if RATE <= 0:
+                raise ValueError(f"Invalid sample rate: {RATE}. It should be a positive integer.")
+            wf.setframerate(RATE)
+            
+            wf.writeframes(b''.join(audio_frames))
+    except Exception as e:
+        print(f"Error saving WAV file: {e}")
+
+def audio_recording_thread():
+    global is_recording, audio_frames
+    audio = pyaudio.PyAudio()
+    stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+    audio_frames.clear()
+
+    while is_recording:
+        data = stream.read(CHUNK)
+        audio_frames.append(data)
+
+    stream.stop_stream()
+    stream.close()
+    audio.terminate()
+
+def start_recording():
+    global is_recording, video_capture
+    
+    if video_capture is None or not video_capture.isOpened():
+        video_capture = cv2.VideoCapture(0)
+        threading.Thread(target=process_video).start()
+
+    is_recording = True
+    threading.Thread(target=audio_recording_thread).start()
+    print("Recording started (audio and video)")
+
+def stop_recording():
+    global is_recording, video_capture
+    
+    is_recording = False
+    save_to_wav(RECORDING_FILENAME)
+    print("Recording stopped (audio and video)")

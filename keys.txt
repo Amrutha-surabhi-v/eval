@@ -1,0 +1,11 @@
+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
+
+
+company api
+"AIzaSyB0u9m1csGnS6HAT2O5iU5N0YK-jrAaBPQ",
+    "AIzaSyBofeEmwj09yMB2Vo6TwT2ibKAYfC2hxH0"
+
+
+
+    my gemini api
+    AIzaSyD9QwMHGOU3daSB-Gldijp70ojpnbcjzgo
